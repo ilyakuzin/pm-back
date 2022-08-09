@@ -1,12 +1,12 @@
 module.exports = class ProjectDto {
     id
-    managerID
+    manager
     status
 
 
     constructor(model) {
         this.id = model._id
-        this.managerID = model.managerID
+        this.manager = model.manager
         this.status = model.status
     }
 

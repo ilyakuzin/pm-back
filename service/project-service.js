@@ -1,26 +1,30 @@
 const Project = require('../models/project-model.js')
 const apiError = require('../exceptions/api_errors')
-const ProjectDto = require('../dtos/project-dtos')
+const Status = require('../models/status-model.js')
+
+//import {STATUSES} from "../models/status-model";
+
 
 class projectService {
 
-    async create(name, managerID, workers, contract, comments, contractEvaluation, statusID, estimationInHour, relatedProjects) {
-        const prName = await Project.findOne({name})
-        if (prName) {
+    async create(name, manager, developers, designers, deadline, comments, status, evaluationOfProject, evaluationByHour, relatedProjects) {
+        const candidate = await Project.findOne({name})
+        if (candidate) {
             throw apiError.BadRequest(`Проект с названием ${name} уже существует`)
         }
-        if (estimationInHour < 0) {
+        if (evaluationByHour < 0) {
             throw apiError.BadRequest(`Невозможное значение количества часов`)
         }
-        const cost = contractEvaluation * estimationInHour
+        const cost = evaluationOfProject * evaluationByHour
         const project = await Project.create({
-            name, managerID, workers, contract, comments, contractEvaluation,
-            cost, statusID, estimationInHour, relatedProjects
+            name, manager, developers, designers, deadline, comments, evaluationOfProject, evaluationByHour,
+            cost, status: await Status.findOne({statusName: status}), relatedProjects
         })
         return project
     }
 
-    async updateProject(name, managerID, workers, contract, comments,  contractEvaluation, statusID, estimationInHour, relatedProjects) {
+    async updateProject(name, manager, developers, designers, deadline, comments, evaluationOfProject,
+                        wastedHours, evaluationByHour, status, relatedProjects) {
         const project = await Project.findOne({name})
         if (!project) {
             throw apiError.BadRequest('Проект не найден')
@@ -28,25 +32,30 @@ class projectService {
         if (name) {
             project.name = name
         }
-        if (managerID) {
-            project.managerID = managerID
+        if (manager) {
+            project.manager = manager
         }
-        if (workers) {
-            project.workers = workers
+        if (developers) {
+            project.developers = developers
         }
-        if (contract) {
-            project.contract = contract
+        if (designers) {
+            project.designers = designers
         }
-        if (contractEvaluation) {
-            project.contractEvaluation = contractEvaluation
+        if (deadline) {
+            project.deadline = deadline
         }
-        if (estimationInHour) {
-            project.estimationInHour = estimationInHour
+        if (evaluationOfProject) {
+            project.evaluationOfProject = evaluationOfProject
         }
-        if (statusID) {
-            //переделать статусы
-            //проверка  должна быть, что такой статус существует
-            project.statusID = statusID
+        if (evaluationByHour) {
+            project.evaluationByHour = evaluationByHour
+        }
+        if (wastedHours) {
+            project.wastedHours = wastedHours
+        }
+        if (status) {
+            const projectStatus = await Status.findOne({statusName: status})
+            project.status = projectStatus
         }
         if (comments) {
             project.comments = comments
@@ -54,7 +63,8 @@ class projectService {
         if (relatedProjects) {
             project.relatedProjects = relatedProjects
         }
-        project.cost = contractEvaluation * estimationInHour
+        project.cost = evaluationByHour * evaluationOfProject
+        //для подсчета прибыли нужна ставка разработчика
         await project.save()
         return project
     }
@@ -67,8 +77,13 @@ class projectService {
         return project
     }
 
-    async getAllProjects() {
-        const projects = await Project.find({}).sort({createdAt: -1})
+    async getAllProjects(managerID) {
+        let projects
+        if (!managerID) {
+            projects = await Project.find({})
+        } else {
+            projects = await Project.find({managerID})
+        }
         let updatedProjects = []
         projects.forEach(project => {
             const updatedProject = new Project(project)
@@ -85,24 +100,6 @@ class projectService {
         return project
     }
 
-    async getProjectByName(name) {
-        const project = await Project.findOne({name})
-        if (!project) {
-            throw apiError.BadRequest('Проект не найден')
-        }
-        return project
-    }
-
-    async getProjectByManager(managerID) {
-        const projects = await Project.findById({managerID: managerID})
-        let updatedProjects = []
-        projects.forEach(project => {
-            const updatedProject = new Project(project)
-            updatedProjects.push(updatedProject)
-        })
-        return updatedProjects
-    }
-
     async getRelatedProjects(id) {
         const project = await Project.findById(id).populate('relatedProjects')
         if (!project) {
@@ -110,16 +107,6 @@ class projectService {
         }
         return project
     }
-
-    async sortByDate(projects) {
-        return projects.sort({createdAt: 1})
-    }
-
-    async sortByDateRecent(projects) {
-        return projects.sort({createdAt: -1})
-    }
-
-
 
 }
 

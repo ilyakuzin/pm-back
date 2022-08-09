@@ -6,11 +6,23 @@ class projectController {
 
     //@desc   create new project
     //@route  POST api/projects/new
-    //@access
+    //@access private
     async create(req, res, next) {
         try {
-            const {name, managerID, workers, contract, comments, statusID, estimationInHour, contractEvaluation} = req.body
-            const projectData = await projectService.create(name, managerID, workers, contract, comments, statusID, estimationInHour, contractEvaluation)
+            const {
+                name,
+                manager,
+                developers,
+                designers,
+                deadline,
+                comments,
+                status,
+                evaluationOfProject,
+                evaluationByHour,
+                relatedProjects
+            } = req.body
+            const projectData = await projectService.create(name, manager, developers, designers, deadline, comments,
+                status, evaluationOfProject, evaluationByHour, relatedProjects)
             return res.json(projectData)
         } catch (e) {
             next(e)
@@ -26,8 +38,21 @@ class projectController {
             if (!errors.isEmpty()) {
                 next(apiError.BadRequest('Ошибка при валидации', errors.array()))
             }
-            const {name, managerID, workers, contract, comments,  contractEvaluation, statusID, estimationInHour, relatedProjects} = req.body
-            const projectData = await projectService.updateProject(name, managerID, workers, contract, comments,  contractEvaluation, statusID, estimationInHour, relatedProjects)
+            const {
+                name,
+                manager,
+                developers,
+                designers,
+                deadline,
+                comments,
+                evaluationOfProject,
+                wastedHours,
+                evaluationByHour,
+                status,
+                relatedProjects
+            } = req.body
+            const projectData = await projectService.updateProject(name, manager, developers, designers, deadline, comments,
+                evaluationOfProject, wastedHours, evaluationByHour, status, relatedProjects)
             return res.json(projectData)
         } catch (e) {
             next(e)
@@ -60,25 +85,13 @@ class projectController {
         }
     }
 
-    // @desc     Get project by id
-    // @route    GET /api/projects/:id
-    // @access
-    async getProjectByName(req, res, next) {
-        try {
-            const name = req.params.name
-            const project = await projectService.getProjectByName(name)
-            return res.json(project)
-        } catch (e) {
-            next(e)
-        }
-    }
-
     // @desc     Get all projects
     // @route    GET /api/projects/
     // @access
     async getAllProjects(req, res, next) {
         try {
-            const projects = await projectService.getAllProjects()
+            const managerID = req.body.managerID
+            const projects = await projectService.getAllProjects(managerID)
             return res.json(projects)
         } catch (e) {
             next(e)
@@ -88,22 +101,12 @@ class projectController {
     // @desc    Get related projects
     // @route   GET /api/projects/:id
     // @access
-    //переписать
     async getRelatedProjects(req, res, next) {
         try {
             const projects = await projectService.getRelatedProjects(req.params.id)
             return res.json(projects)
         } catch (e) {
             next(e)
-        }
-    }
-
-    async sortByDate(req, res, next) {
-        try {
-
-        }
-        catch (e) {
-
         }
     }
 

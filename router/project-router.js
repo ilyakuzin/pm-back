@@ -13,11 +13,7 @@ router.route('/:id')
     .put(allow(['ADMIN', 'MANAGER']), controller.updateProject)
     .delete(allow(['ADMIN']), controller.deleteProject)
 
-router.route('/sort')
-    .get(controller.sortByDate)
-
 router.route('/:id/related-projects')
     .get(allow(['ADMIN', 'MANAGER']), controller.getRelatedProjects)
-
 
 module.exports = router
