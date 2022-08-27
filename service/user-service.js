@@ -7,6 +7,7 @@ const apiError = require('../exceptions/api_errors')
 const bcrypt = require('bcrypt')
 const uuid = require('uuid')
 const UserDto = require('../dtos/user-dtos')
+const UserRate = require('../models/userRate-model')
 
 class userService {
 
@@ -87,13 +88,24 @@ class userService {
     }
 
 
-    async getAllUsers() {
-        const users = await User.find({})
+    async getAllUsers(role) {
+        let users
+        if (role) {
+            users = await User.find({roles: role})
+        } else {
+            users = await User.find({})
+        }
         let updatedUsers = []
-        users.forEach(user => {
+        for (const user of users) {
             const updatedUser = new UserDto(user)
-            updatedUsers.push(updatedUser)
-        })
+            const userRate = await UserRate.findOne({userId: updatedUser.id}).sort({date:-1})
+                .select('value')
+            if (!userRate) {
+                updatedUsers.push({user: updatedUser, rate: 'Ставка еще не назначена'})
+            } else {
+                updatedUsers.push({user: updatedUser, rate: userRate.value})
+            }
+        }
         return updatedUsers
     }
 
@@ -102,7 +114,14 @@ class userService {
         if (!user) {
             throw apiError.BadRequest('Пользователь не найден')
         }
-        return user
+        const updatedUser = new UserDto(user)
+        const userRate = await UserRate.findOne({userId: updatedUser.id}).sort({date:-1})
+            .select('value')
+        if(!userRate){
+            return {user: updatedUser, rate: 'Ставка еще не назначена'}
+        }else{
+            return {user: updatedUser, rate: userRate.value}
+        }
     }
 
     async deleteUser(id) {
@@ -113,22 +132,22 @@ class userService {
         return user
     }
 
-    async uploadAvatar(id, file) {
+    async uploadAvatar(id, file, path) {
         const user = await User.findById(id)
         if (user.avatar) {
-            fs.unlinkSync(process.env.STATIC_PATH + '\\' + user.avatar)
+            fs.unlinkSync(path + '\\' + user.avatar)
         }
         const avatarName = uuid.v4() + '.jpg'
-        await file.mv(process.env.STATIC_PATH + '\\' + avatarName)
+        await file.mv(path + '\\' + avatarName)
         user.avatar = avatarName
         await user.save()
         const userDto = new UserDto(user)
         return userDto
     }
 
-    async deleteAvatar(id) {
+    async deleteAvatar(id, path) {
         const user = await User.findById(id)
-        fs.unlinkSync(process.env.STATIC_PATH + '\\' + user.avatar)
+        fs.unlinkSync(path + '\\' + user.avatar)
         user.avatar = null
         await user.save()
         const userDto = new UserDto(user)

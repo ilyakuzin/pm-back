@@ -9,8 +9,8 @@ const router = new Router()
 router
     .post('/invite', allow('ADMIN'),
         body('email').isEmail(),
-        controller.invite)
-    .get('/', allow(['ADMIN', 'MANAGER']), controller.getAllUsers)
+        controller.invite )
+    .get('/', allow( ['ADMIN', 'MANAGER']), controller.getAllUsers)
 
 router.put('/update/me', authMiddleware,
     body('email').isEmail(),
@@ -23,7 +23,7 @@ router.route('/avatar')
 
 router.route('/:id')
     .get(allow(['ADMIN', 'MANAGER']), controller.getOneUser)
-    .put(allow(['ADMIN']),
+    .put(allow( ['ADMIN']),
         body('email').isEmail(),
         body('password').matches(/^(\s*|(?=.*\d)(?=.*[A-Z])[0-9a-zA-Z]{8,})$/),
         controller.updateUser)

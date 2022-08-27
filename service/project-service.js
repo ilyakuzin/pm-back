@@ -1,13 +1,13 @@
 const Project = require('../models/project-model.js')
+const ProjectLog = require('../models/project-logs-model.js')
 const apiError = require('../exceptions/api_errors')
 const Status = require('../models/status-model.js')
-
-//import {STATUSES} from "../models/status-model";
+const ProjectDto = require('../dtos/project-dtos')
 
 
 class projectService {
 
-    async create(name, manager, developers, designers, deadline, comments, status, evaluationOfProject, evaluationByHour, relatedProjects) {
+    async create(name, manager, developers, designers, deadline, comments, status, evaluationOfProject, evaluationByHour, cost, relatedProjects) {
         const candidate = await Project.findOne({name})
         if (candidate) {
             throw apiError.BadRequest(`Проект с названием ${name} уже существует`)
@@ -15,58 +15,130 @@ class projectService {
         if (evaluationByHour < 0) {
             throw apiError.BadRequest(`Невозможное значение количества часов`)
         }
-        const cost = evaluationOfProject * evaluationByHour
+        if (!cost) {
+            cost = evaluationOfProject * evaluationByHour
+        }
         const project = await Project.create({
-            name, manager, developers, designers, deadline, comments, evaluationOfProject, evaluationByHour,
-            cost, status: await Status.findOne({statusName: status}), relatedProjects
+            name,
+            manager,
+            developers,
+            designers,
+            deadline,
+            comments,
+            evaluationOfProject,
+            evaluationByHour,
+            percentageDifference: 1,
+            profit: evaluationByHour * evaluationOfProject,
+            cost,
+            status: await Status.findOne({statusName: status}),
+            relatedProjects
         })
-        return project
+        const projectDto = new ProjectDto(project)
+        return projectDto
     }
 
-    async updateProject(name, manager, developers, designers, deadline, comments, evaluationOfProject,
-                        wastedHours, evaluationByHour, status, relatedProjects) {
-        const project = await Project.findOne({name})
+
+    async updateProject(projectId, changedByManager, name, managerId, developers, designers, deadline, comments, evaluationOfProject,
+                        evaluationByHour, cost, status, relatedProjects) {
+        const project = await Project.findById(projectId)
         if (!project) {
             throw apiError.BadRequest('Проект не найден')
         }
+        const projectLog = await ProjectLog.create({
+            projectId,
+            changedByManager,
+        })
         if (name) {
+            projectLog.late.name = project.name
+            projectLog.actual.name = name
             project.name = name
         }
-        if (manager) {
-            project.manager = manager
+        if (managerId) {
+            projectLog.manager_late = project.manager
+            projectLog.manager_actual = managerId
+            project.manager = managerId
         }
         if (developers) {
+            projectLog.developers_late = project.developers
+            projectLog.developers_actual = developers
             project.developers = developers
         }
         if (designers) {
+            projectLog.designers_late = project.designers
+            projectLog.designers_actual = designers
             project.designers = designers
         }
         if (deadline) {
+            projectLog.late.deadline = project.deadline
+            projectLog.actual.deadline = deadline
             project.deadline = deadline
         }
         if (evaluationOfProject) {
+            projectLog.late.evaluationOfProject = project.evaluationOfProject
+            projectLog.actual.evaluationOfProject = evaluationOfProject
             project.evaluationOfProject = evaluationOfProject
         }
         if (evaluationByHour) {
+            projectLog.late.evaluationByHour = project.evaluationByHour
+            projectLog.actual.evaluationByHour = evaluationByHour
             project.evaluationByHour = evaluationByHour
         }
-        if (wastedHours) {
-            project.wastedHours = wastedHours
-        }
+        // if (wastedHours) {
+        //     projectLog.late.wastedHours = project.wastedHours
+        //     projectLog.actual.wastedHours = wastedHours
+        //     project.wastedHours = wastedHours
+        // }
         if (status) {
             const projectStatus = await Status.findOne({statusName: status})
+            if (!projectStatus) {
+                throw apiError.BadRequest('Статус не найден')
+            }
+            projectLog.status_late = await Status.findOne(project.status)
+            projectLog.status_actual = projectStatus
             project.status = projectStatus
         }
         if (comments) {
-            project.comments = comments
+            projectLog.late.comments = project.comments
+            let projectComments = project.comments
+            projectComments.push(comments)
+            projectLog.actual.comments = projectComments
+            project.comments = projectComments
         }
         if (relatedProjects) {
-            project.relatedProjects = relatedProjects
+            projectLog.relatedProjects_late = project.relatedProjects
+            let projects = project.relatedProjects
+            projects.push(relatedProjects)
+            projectLog.relatedProjects_actual = projects
+            project.relatedProjects = projects
         }
-        project.cost = evaluationByHour * evaluationOfProject
-        //для подсчета прибыли нужна ставка разработчика
+        if (cost) {
+            projectLog.late.cost = project.cost
+            projectLog.actual.cost = cost
+            project.cost = cost
+        } else {
+            if (evaluationByHour && evaluationOfProject) {
+                projectLog.late.cost = project.cost
+                project.cost = evaluationByHour * evaluationOfProject
+                projectLog.actual.cost = project.cost
+            } else if (evaluationOfProject && !evaluationOfProject) {
+                projectLog.late.cost = project.cost
+                project.cost = evaluationOfProject * project.evaluationOfProject
+                projectLog.actual.cost = project.cost
+            } else if (!evaluationOfProject && evaluationOfProject) {
+                projectLog.late.cost = project.cost
+                project.cost = project.evaluationOfProject * evaluationOfProject
+                projectLog.actual.cost = project.cost
+            }
+        }
+        projectLog.late.percentageDifference = (project.evaluationOfProject - project.wastedHours) / project.evaluationOfProject
+        projectLog.actual.percentageDifference = (project.evaluationOfProject - project.wastedHours) / project.evaluationOfProject
+        project.percentageDifference = (project.evaluationOfProject - project.wastedHours) / project.evaluationOfProject
+        let projectLogs = project.projectHistory
+        projectLogs.push(projectLog)
+        project.projectHistory = projectLogs
+        await projectLog.save()
         await project.save()
-        return project
+        return new ProjectDto(project)
     }
 
     async deleteProject(id) {
@@ -77,37 +149,127 @@ class projectService {
         return project
     }
 
-    async getAllProjects(managerID) {
+    async getAllProjects(manager, status, deadline) {
         let projects
-        if (!managerID) {
-            projects = await Project.find({})
+        if (manager) {
+            if (status) {
+                if (deadline) {
+                    projects = await Project.find({
+                        manager: manager,
+                        status: status,
+                        deadline: deadline
+                    }).populate('manager', 'surname firstName secondName avatar')
+                        .populate('developers', 'surname firstName secondName avatar')
+                        .populate('designers', 'surname firstName secondName avatar')
+                        .populate('status')
+                } else {
+                    projects = await Project.find({
+                        manager: manager,
+                        status: status
+                    })
+                        .populate('manager', 'surname firstName secondName avatar')
+                        .populate('developers', 'surname firstName secondName avatar')
+                        .populate('designers', 'surname firstName secondName avatar')
+                        .populate('status')
+                }
+            } else {
+                if (deadline) {
+                    projects = await Project.find({
+                        manager: manager,
+                        deadline: deadline
+                    })
+                        .populate('manager', 'surname firstName secondName avatar')
+                        .populate('developers', 'surname firstName secondName avatar')
+                        .populate('designers', 'surname firstName secondName avatar').populate('status')
+                } else {
+                    projects = await Project.find({manager: manager})
+                        .populate('manager', 'surname firstName secondName avatar')
+                        .populate('developers', 'surname firstName secondName avatar')
+                        .populate('designers', 'surname firstName secondName avatar')
+                        .populate('status')
+                }
+            }
         } else {
-            projects = await Project.find({managerID})
+            if (status) {
+                if (deadline) {
+                    projects = await Project.find({
+                        status: status,
+                        deadline: deadline
+                    }).populate('manager', 'surname firstName secondName avatar').populate('developers', 'surname firstName secondName avatar').populate('designers', 'surname firstName secondName avatar').populate('status')
+                } else {
+                    projects = await Project.find({status: status}).populate('manager', 'surname firstName secondName avatar').populate('developers', 'surname firstName secondName avatar').populate('designers', 'surname firstName secondName avatar').populate('status')
+                }
+            } else {
+                if (deadline) {
+                    projects = await Project.find({deadline: deadline}).populate('manager', 'surname firstName secondName avatar').populate('developers', 'surname firstName secondName avatar').populate('designers', 'surname firstName secondName avatar').populate('status')
+                } else {
+                    projects = await Project.find({}).populate('manager', 'surname firstName secondName avatar').populate('developers', 'surname firstName secondName avatar').populate('designers', 'surname firstName secondName avatar').populate('status')
+                }
+            }
         }
         let updatedProjects = []
         projects.forEach(project => {
-            const updatedProject = new Project(project)
+            const updatedProject = new ProjectDto(project)
             updatedProjects.push(updatedProject)
         })
         return updatedProjects
     }
 
     async getProjectById(id) {
-        const project = await Project.findById(id).populate('relatedProjects')
+        const project = await Project.findById(id)
+            .populate('relatedProjects status')
+            .populate('developers', 'surname firstName secondName avatar')
+            .populate('designers', 'surname firstName secondName avatar')
+        //.populate('projectHistory')
         if (!project) {
             throw apiError.BadRequest('Проект не найден')
         }
         return project
+    }
+
+    async getProjectHistory(id) {
+        const projectHistory = await ProjectLog.find({projectId: id})
+            .populate('changedByManager', 'firstName secondName surname avatar')
+            .populate('manager_actual', 'firstName secondName surname')
+            .populate('manager_late', 'firstName secondName surname')
+            .populate('developers_actual', 'firstName secondName surname')
+            .populate('developers_late', 'firstName secondName surname')
+            .populate('designers_actual', 'firstName secondName surname')
+            .populate('designers_late', 'firstName secondName surname')
+            .populate('status_actual')
+            .populate('status_late')
+            .populate('relatedProjects_actual', 'name')
+            .populate('relatedProjects_late', 'name')
+            .populate('actual late')
+
+        // for (const projectHistoryElement of projectHistory) {
+        //     console.log(projectHistoryElement)
+        //     console.log("----------------------------------")
+        // }
+        // .populate('manager', 'firstName secondName avatar')
+        // .populate('developers', 'surname firstName secondName avatar')
+        // .populate('designers', 'surname firstName secondName avatar')
+        // .populate('status relatedProjects')
+        return projectHistory
     }
 
     async getRelatedProjects(id) {
-        const project = await Project.findById(id).populate('relatedProjects')
+        const project = await Project.findById(id).populate('manager developers designers relatedProjects status')
         if (!project) {
             throw apiError.BadRequest('Проект не найден')
         }
-        return project
+        return new ProjectDto(project)
     }
 
+    async getUserProjects(id) {
+        const projects = await Project.find({developers: id}).populate('manager developers designers relatedProjects status')
+        let updatedProjects = []
+        projects.forEach(project => {
+            const updatedProject = new ProjectDto(project)
+            updatedProjects.push(updatedProject)
+        })
+        return updatedProjects
+    }
 }
 
 module.exports = new projectService()

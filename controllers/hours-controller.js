@@ -1,5 +1,6 @@
 const hoursService = require('../service/hours-service')
-const apiError = require("../exceptions/api_errors");
+const apiError = require("../exceptions/api_errors")
+const {validationResult} = require('express-validator')
 
 class HoursController {
 
@@ -8,9 +9,13 @@ class HoursController {
 // @access   Private
     async addHours(req, res, next) {
         try {
-            const {projectName, quantity, date} = req.body
+            const errors = validationResult(req)
+            if (!errors.isEmpty()) {
+                next(apiError.BadRequest('Ошибка при валидации', errors.array()))
+            }
+            const {projectName, quantity, date, description} = req.body
             const userId = req.user.id
-            const hoursData = await hoursService.addHours(userId, projectName, quantity, date)
+            const hoursData = await hoursService.addHours(userId, projectName, quantity, date, description)
             res.json(hoursData)
         } catch (e) {
             next(e)
@@ -22,8 +27,24 @@ class HoursController {
 // @access   Private
     async getHours(req, res, next) {
         try {
+            const start = req.query.start
+            const end = req.query.end
             const userId = req.user.id
-            const hoursData = await hoursService.getHours(userId)
+            const hoursData = await hoursService.getHours(userId, start, end)
+            res.json(hoursData)
+        } catch (e) {
+            next(e)
+        }
+    }
+
+// @desc     Get all hours
+// @route    GET /api/hours/
+// @access   Private
+    async getAllHours(req, res, next) {
+        try {
+            const start = req.query.start
+            const end = req.query.end
+            const hoursData = await hoursService.getAllHours( start, end)
             res.json(hoursData)
         } catch (e) {
             next(e)
@@ -31,12 +52,16 @@ class HoursController {
     }
 
 // @desc     Update hours
-// @route    PUT /api/hours/:id
+// @route    PUT /api/hours/update/:id
 // @access   Private
     async updateHours(req, res, next) {
         try {
-            const {quantity, date} = req.body
-            const hoursData = await hoursService.updateHours(req.params.id, quantity, date)
+            const errors = validationResult(req)
+            if (!errors.isEmpty()) {
+                next(apiError.BadRequest('Ошибка при валидации', errors.array()))
+            }
+            const {quantity, description} = req.body
+            const hoursData = await hoursService.updateHours(req.params.id, quantity, description)
             res.json(hoursData)
         } catch (e) {
             next(e)
@@ -44,7 +69,7 @@ class HoursController {
     }
 
 // @desc     Delete hours
-// @route    DELETE /api/hours/:id
+// @route    DELETE /api/hours/delete/:id
 // @access   Private
     async deleteHours(req, res, next) {
         try {
@@ -56,5 +81,6 @@ class HoursController {
         }
     }
 }
+
 
 module.exports = new HoursController()

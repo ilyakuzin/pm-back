@@ -26,7 +26,8 @@ const StatusSchema = new Schema({
         default: STATUSES.NEGOTIATION,
         unique: true
     },
-    statusColour: {type: String}
+    emoji: {type: String},
+    colour: {type: String}
 })
 
 module.exports = model('Status', StatusSchema)
