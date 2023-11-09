@@ -1,4 +1,5 @@
 # project-management-backend
+## need to fix issues and update libs
 ## Dependencies (NPM)
 
 [bcrypt](https://www.npmjs.com/package/bcrypt)
